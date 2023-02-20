@@ -214,4 +214,82 @@ clean:
     make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
 ```
 
-现在看个真实世界的例子，[`drivers/char/Makefile`](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/drivers/char/Makefile)。你可以看到，
+现在看个真实世界的例子，[`drivers/char/Makefile`](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/drivers/char/Makefile)。你可以看到，有些玩意与内核紧紧连在一起（`obj-y`）。但`obj-m`哪去了？熟悉shell脚本的人稍动脑筋就能明白。随处可见的`obj-$(CONFIG_FOO)`会展开为obj-y或obj-m，这取决于`CONFIG_FOO`被赋值为`y`还是`m`。顺带一提，这些变量定义在Linux内核源码树顶层目录里的`.config`文件，你执行`make menuconfig`之类的命令时就会设好。
+
+## 4.3 `__init`和`__exit`宏
+
+`__init`宏负责在内建驱动程序的初始化函数执行完毕时，把初始化函数扔掉并释放内存；不过在可加载的模块中不起作用。考虑到二者init函数调用的时机不同，就能想通。
+
+还有一个`__initdata`宏，和`__init`机制类似，不过是作用在初始化变量而非函数上。
+
+`__exit`宏在模块被集成到内核中时，会导致相应函数失活不执行。不过和`__init`宏一样，这个宏对可加载模块不起作用。同理，思考清理函数执行的时机，不难想通，集成到内核里的驱动不需要被清理，而动态加载的内核模块需要。
+
+上述的宏都在[`include/linux/init.h`](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/include/linux/init.h)中定义，用于清理内核内存区域。在你启动内核时看到“Freeing unused kernel memory: 236k freed”之类的东西时，被清理的就是上述相应内容。
+
+```c
+/* 
+ * hello-3.c - 解释 __init, __initdata 和 __exit 宏
+ */ 
+#include <linux/init.h> /* 这几个宏用到 */ 
+#include <linux/kernel.h> /* pr_info()用到 */ 
+#include <linux/module.h> /* 所有模块都用到 */ 
+ 
+static int hello3_data __initdata = 3; 
+ 
+static int __init hello_3_init(void) 
+{ 
+    pr_info("Hello, world %d\n", hello3_data); 
+    return 0; 
+} 
+ 
+static void __exit hello_3_exit(void) 
+{ 
+    pr_info("Goodbye, world 3\n"); 
+} 
+ 
+module_init(hello_3_init); 
+module_exit(hello_3_exit); 
+ 
+MODULE_LICENSE("GPL");
+```
+
+## 4.4 许可证和内核模块文档
+
+有一说一，真的有人加载甚至哪怕关心专有版权的内核模块吗？你可以试试加载专有版权的模块，可能会得到以下结果；
+
+```
+$ sudo insmod xxxxxx.ko
+loading out-of-tree module taints kernel.
+module license 'unspecified' taints kernel.
+```
+
+你可以通过几个宏来为你的模块声明许可证。比如说"GPL", "GPL v2", "GPL and additional rights", "Dual BSD/GPL", "Dual MIT/GPL", "Dual MPL/GPL" 和 "Proprietary"。相关声明在[`include/linux/module.h`](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/include/linux/module.h)中定义。
+
+可以使用`MODULE_LICENSE`宏来引用你想用的许可证。此外还有几个宏用于说明内核模块的相关信息，请参考下面的例子。
+
+```c
+/* 
+ * hello-4.c - 解释内核模块文档 
+ */ 
+#include <linux/init.h> /* 这几个宏用到 */ 
+#include <linux/kernel.h> /* pr_info()用到 */ 
+#include <linux/module.h> /* 所有模块都用到 */ 
+ 
+MODULE_LICENSE("GPL"); 
+MODULE_AUTHOR("LKMPG"); 
+MODULE_DESCRIPTION("A sample driver"); 
+ 
+static int __init init_hello_4(void) 
+{ 
+    pr_info("Hello, world 4\n"); 
+    return 0; 
+} 
+ 
+static void __exit cleanup_hello_4(void) 
+{ 
+    pr_info("Goodbye, world 4\n"); 
+} 
+ 
+module_init(init_hello_4); 
+module_exit(cleanup_hello_4);
+```
