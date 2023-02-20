@@ -1,0 +1,6 @@
+[book]
+authors = ["Peter Jay Salzman", "Michael Burian", "Ori Pomerantz", "Bob Mottram", "Jim Huang", "Predmet Chen <chengongpp@outlook.com>"]
+language = "zh-cn"
+multilingual = false
+src = "src"
+title = "Linux内核模块编程指南（2022）"
