@@ -17,16 +17,16 @@ cd ~/develop/kernel/hello-1
 
 ```c
 /* 
- * hello-1.c - The simplest kernel module. 
+ * hello-1.c - 最简单的内核模块
  */ 
-#include <linux/kernel.h> /* Needed for pr_info() */ 
-#include <linux/module.h> /* Needed by all modules */ 
+#include <linux/kernel.h> /* pr_info()用到 */ 
+#include <linux/module.h> /* 所有内核模块都用到 */ 
  
 int init_module(void) 
 { 
     pr_info("Hello world 1.\n"); 
  
-    /* A non 0 return means init_module failed; module can't be loaded. */ 
+    /* 非0返回值意味着init_module失败，模块无法加载 */ 
     return 0; 
 } 
  
@@ -156,5 +156,62 @@ sudo journalctl --since "1 hour ago" | grep kernel
 
 你现在已经了解了创建、编译、安装和移除内核模块的基本流程。现在向你详细介绍一下这个模块是如何运作的。
 
-内核模块必须有至少两个函数：一个“启动”（初始化）函数`init_module()`，在你通过`insmod`将其插入内核后被调用；还有个“终止”（清理）函数`cleanup_module()`，在其被从内核中移除前调用。其实自从内核版本2.3.13开始，你已经可以给模块的启动和终止函数指定你心仪的名字了，在[4.2]()中可以学到如何操作。这种新做法事实上已经成了推荐做法。不过，还是有很多人继续用`init_module()`和`cleanup_module()`来命名启动和终止函数。
+内核模块必须有至少两个函数：一个“启动”（初始化）函数`init_module()`，在你通过`insmod`将其插入内核后被调用；还有个“终止”（清理）函数`cleanup_module()`，在其被从内核中移除前调用。其实自从内核版本2.3.13开始，你已经可以给模块的启动和终止函数指定你心仪的名字了，在[4.2](#42-你好再见)中可以学到如何操作。这种新做法事实上已经成了推荐做法。不过，还是有很多人继续用`init_module()`和`cleanup_module()`来命名启动和终止函数。
 
+一般来说，`init_module()`要么在内核里给某件东西注册一个句柄，要么把内核函数替换为自己的代码（一般来说会做点操作然后再调用原函数）。而`cleanup_module()`需要做的是把`init_module()`做过的操作全部还原，以实现安全卸下模块。
+
+每个内核模块都必须包含`<linux/module.h>`。我们上面的例子包含`<linux/kernel.h>`只是因为`pr_alert()`日志等级的宏展开需要，你在下文*第2点*就会明白。
+
+1. 谈几句编码风格。好些刚开始做内核编程的人没注意，代码缩进**必须使用tab而非空格**。这是内核代码的约定，你个人可能不喜欢，但如果你要给内核上游提交代码，你就必须适应。
+2. 再谈谈输出宏。起初，我们有个`printk`函数，后面跟着日志优先级`KERN_INFO`或`KERN_DEBUG`。近来这种操作可以用一系列输出宏来表述，比如`pr_info`和`pr_debug`，这样做看起来更养眼，也更爱护键盘。你可以在[`include/linux/printk.h`](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/include/linux/printk.h)查看详细内容。建议你花点时间通读一遍优先级相关的宏。
+3. 再谈谈编译。内核模块的编译方式和一般的用户态程序有些不一样。早先的内核版本需要我们格外留意相关配置，这些配置一般存在Makefile里。尽管经过详细组织整理，一些子层级的Makefile还是积累了许多多余的配置项，以至于又膨胀又难维护。还好，现在有了新的编译配置手段，叫`kbuild`，外部模块的构建流程，现在也被整合到标准的内核构建流程中了。如果想要深入了解如何编译不在主线内核中的模块（比如本书中你看到的所有例子），可以阅读内核仓库中的[`Documentation/kbuild/modules.rst`](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/Documentation/kbuild/modules.rst)。
+    内核模块Makefile的其他细节记录在[`Documentation/kbuild/makefiles.rst`](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/Documentation/kbuild/makefiles.rst)中。在开始魔改Makefile之前，你最好先通读一遍相关文档，能帮你少走不少弯路。
+
+> 给读者一个小练习：看到init_module()函数返回语句前面的注释没？把返回值改成负数，重新编译并加载模块，看看会发生什么。
+
+## 4.2 你好，再见
+
+在早期内核版本中，你必须用`init_module`和`cleanup_module`来命名启动和终止函数，你在第一个hello world例子中就是这么做的。不过现在你可以用`module_init`宏和`module_exit`宏来给启动和终止函数指定名字了；这两个宏在[`include/linux/module.h`](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/include/linux/module.h)中。唯一的要求是你的启动和终止函数必须在调用宏之前声明，否则编译会出错。这种用法的例子如下：
+
+```c
+/* 
+ * hello-2.c - 解释module_init()和module_exit()宏
+ * 更建议使用这两个宏，而不是init_module()和cleanup_module()
+ */ 
+#include <linux/init.h> /* 这两个宏用到 */ 
+#include <linux/kernel.h> /* pr_info()用到 */ 
+#include <linux/module.h> /* 所有内核模块都用到 */ 
+ 
+static int __init hello_2_init(void) 
+{ 
+    pr_info("Hello, world 2\n"); 
+    return 0; 
+} 
+ 
+static void __exit hello_2_exit(void) 
+{ 
+    pr_info("Goodbye, world 2\n"); 
+} 
+ 
+module_init(hello_2_init); 
+module_exit(hello_2_exit); 
+ 
+MODULE_LICENSE("GPL");
+```
+
+现在我们名下已经有两个如假包换的内核模块了。把另一个模块加上去也很简单，操作如下：
+
+```makefile
+obj-m += hello-1.o 
+obj-m += hello-2.o 
+ 
+PWD := $(CURDIR) 
+ 
+all: 
+    make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules 
+ 
+clean: 
+    make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+```
+
+现在看个真实世界的例子，[`drivers/char/Makefile`](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/drivers/char/Makefile)。你可以看到，
