@@ -293,3 +293,158 @@ static void __exit cleanup_hello_4(void)
 module_init(init_hello_4); 
 module_exit(cleanup_hello_4);
 ```
+## 4.5 向内核模块传递命令行参数
+
+可以给内核模块传入命令行参数，不过并不是以大家熟悉的argc/argv方式。
+
+为了允许向模块传参，你需要声明全局变量来接收命令行参数，然后使用`module_param()`宏（在[`include/linux/moduleparam.h`](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/include/linux/moduleparam.h)中定义）进行相关设置。在运行时，`insmod`命令会把接收的命令行参数放到相关变量中，比如`insmod mymodule.ko myvariable=5`。为了保持代码整洁，变量声明和宏调用应该放在模块的开头。后面的示例代码比我含糊的解释清晰得多。
+
+`module_param()`宏接收3个参数：变量名、变量类型和与之相对应的sysfs文件。整型可以带符号，也可以不带。如果你想用整数数组或者字符串，请参考`module_param_array()`和`module_param_string()`。
+
+```c
+int myint = 3; 
+module_param(myint, int, 0);
+```
+
+补充说明，数组的支持方式已经和稍早的内核版本有所不同了。为了保证你输入的参数个数可控，你得在第三个参数传入一个指针，指针指向一个变量用于计数。不过你也可以选择无视计数，传入`NULL`。两种情况参考以下例子：
+
+```c
+int myintarray[2]; 
+module_param_array(myintarray, int, NULL, 0); /* 不关心计数 */ 
+ 
+short myshortarray[4]; 
+int count; 
+module_param_array(myshortarray, short, &count, 0); /* 计数会被放在count变量 */
+```
+
+推荐的做法是给内核模块的变量设置默认值（比如端口或者IO地址），当变量是默认值时，进行自动探测（后面会讲），否则保持现在的值。后面我们会详细讲解。
+
+还有个宏函数`MODULE_PARM_DESC()`，用于说明模块接收参数的作用。该函数接收两个参数：变量名和说明字符串。
+
+```c
+/* 
+ * hello-5.c - 解释如何向内核模块传递命令行参数
+ */ 
+#include <linux/init.h> 
+#include <linux/kernel.h> 
+#include <linux/module.h> 
+#include <linux/moduleparam.h> 
+#include <linux/stat.h> 
+ 
+MODULE_LICENSE("GPL"); 
+ 
+static short int myshort = 1; 
+static int myint = 420; 
+static long int mylong = 9999; 
+static char *mystring = "blah"; 
+static int myintarray[2] = { 420, 420 }; 
+static int arr_argc = 0; 
+ 
+/* module_param(foo, int, 0000) 
+ * 第一个参数是参数名称
+ * 第二个参数是参数类型 
+ * 最后一个参数是权限位 
+ * 在稍后的阶段用于将该参数暴露在sysfs下（如果设置成非0）
+ */ 
+module_param(myshort, short, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP); 
+MODULE_PARM_DESC(myshort, "A short integer"); 
+module_param(myint, int, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH); 
+MODULE_PARM_DESC(myint, "An integer"); 
+module_param(mylong, long, S_IRUSR); 
+MODULE_PARM_DESC(mylong, "A long integer"); 
+module_param(mystring, charp, 0000); 
+MODULE_PARM_DESC(mystring, "A character string"); 
+ 
+/* module_param_array(name, type, num, perm); 
+ * 第一个参数是参数名称（这里的情况是数组名称）
+ * 第二个参数是数组类型名称 
+ * 第三个参数是一个指针，指向的变量用于存储模块加载时
+ * 被用户初始化的数组中元素的个数
+ * 第四个参数是权限位
+ */ 
+module_param_array(myintarray, int, &arr_argc, 0000); 
+MODULE_PARM_DESC(myintarray, "An array of integers"); 
+ 
+static int __init hello_5_init(void) 
+{ 
+    int i; 
+ 
+    pr_info("Hello, world 5\n=============\n"); 
+    pr_info("myshort is a short integer: %hd\n", myshort); 
+    pr_info("myint is an integer: %d\n", myint); 
+    pr_info("mylong is a long integer: %ld\n", mylong); 
+    pr_info("mystring is a string: %s\n", mystring); 
+ 
+    for (i = 0; i < ARRAY_SIZE(myintarray); i++) 
+        pr_info("myintarray[%d] = %d\n", i, myintarray[i]); 
+ 
+    pr_info("got %d arguments for myintarray.\n", arr_argc); 
+    return 0; 
+} 
+ 
+static void __exit hello_5_exit(void) 
+{ 
+    pr_info("Goodbye, world 5\n"); 
+} 
+ 
+module_init(hello_5_init); 
+module_exit(hello_5_exit);
+```
+
+个人推荐按下面的操作折腾一番：
+
+```
+$ sudo insmod hello-5.ko mystring="bebop" myintarray=-1
+$ sudo dmesg -t | tail -7
+myshort is a short integer: 1
+myint is an integer: 420
+mylong is a long integer: 9999
+mystring is a string: bebop
+myintarray[0] = -1
+myintarray[1] = 420
+got 1 arguments for myintarray.
+
+$ sudo rmmod hello-5
+$ sudo dmesg -t | tail -1
+Goodbye, world 5
+
+$ sudo insmod hello-5.ko mystring="supercalifragilisticexpialidocious" myintarray=-1,-1
+$ sudo dmesg -t | tail -7
+myshort is a short integer: 1
+myint is an integer: 420
+mylong is a long integer: 9999
+mystring is a string: supercalifragilisticexpialidocious
+myintarray[0] = -1
+myintarray[1] = -1
+got 2 arguments for myintarray.
+
+$ sudo rmmod hello-5
+$ sudo dmesg -t | tail -1
+Goodbye, world 5
+
+$ sudo insmod hello-5.ko mylong=hello
+insmod: ERROR: could not insert module hello-5.ko: Invalid parameters
+```
+
+## 4.6 将内核模块源码分成多个文件
+
+有的时候你会需要把内核模块源码分成多个文件。
+
+以下是一个例子：
+
+```c
+/* 
+ * start.c - 演示多文件的内核模块
+ */ 
+ 
+#include <linux/kernel.h> /* 整内核相关的活 */ 
+#include <linux/module.h> /* 模块要用 */ 
+ 
+int init_module(void) 
+{ 
+    pr_info("Hello, world - this is the kernel speaking\n"); 
+    return 0; 
+} 
+ 
+MODULE_LICENSE("GPL");
+```
