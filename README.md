@@ -1,6 +1,6 @@
 # Linux内核模块编程指南（内核版本5.x）中文翻译
 
-本项目为基于内核版本5.x编写的新版《Linux内核模块编程指南》的中文翻译，目前尚在建设中。原项目地址为[lkmpg](https://github.com/sysprog21/lkmpg)，遵循OSL-3.0协议释出，如有转发请标注原书作者，如有二次加工编辑请遵循原书OSL-3.0协议保持开源等特性。
+本项目为基于内核版本5.x编写的新版 *The Linux Kernel Module Programming Guide*《Linux内核模块编程指南》的中文翻译，目前尚在建设中。原项目地址为[lkmpg](https://github.com/sysprog21/lkmpg)，遵循OSL-3.0协议释出，如有转发请标注原书作者，如有二次加工编辑请遵循原书OSL-3.0协议保持开源等特性。
 
 原书作者：`Peter Jay Salzman`, `Michael Burian`, `Ori Pomerantz`, `Bob Mottram`, `Jim Huang`
 
