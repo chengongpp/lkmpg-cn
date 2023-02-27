@@ -430,7 +430,7 @@ insmod: ERROR: could not insert module hello-5.ko: Invalid parameters
 
 有的时候你会需要把内核模块源码分成多个文件。
 
-以下是一个例子：
+以下是一个例子。
 
 ```c
 /* 
@@ -448,3 +448,81 @@ int init_module(void)
  
 MODULE_LICENSE("GPL");
 ```
+
+另一个文件：
+
+```c
+/* 
+ * stop.c - 演示多文件的内核模块
+ */ 
+ 
+#include <linux/kernel.h> /* 整内核相关的活 */ 
+#include <linux/module.h> /* 模块要用 */ 
+ 
+void cleanup_module(void) 
+{ 
+    pr_info("Short is the life of a kernel module\n"); 
+} 
+ 
+MODULE_LICENSE("GPL");
+```
+
+最后是Makefile：
+
+```makefile
+obj-m += hello-1.o 
+obj-m += hello-2.o 
+obj-m += hello-3.o 
+obj-m += hello-4.o 
+obj-m += hello-5.o 
+obj-m += startstop.o 
+startstop-objs := start.o stop.o 
+ 
+PWD := $(CURDIR) 
+ 
+all: 
+    make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules 
+ 
+clean: 
+    make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+```
+
+这份Makefile包括了我们之前提到的所有例子。前五行普普通通，而后面两行就是刚才的例子要用到的。我们先给组合起来的模块取个名，然后我们告诉`make`这个模块包含哪些目标文件。
+
+## 4.7 为预编译好的内核构建模块
+
+我们强烈推荐你重新编译你自己的内核，从而开启一些非常方便你调试的特性。比如说强制模块卸载（`MODULE_FORCE_UNLOAD`）：开启这个选项时，你可以用`sudo rmmod -f 模块名`命令，在内核认为操作不安全时依然强制卸下模块。这个选项可以在开发模块时帮你省下许多时间，避免许多不必要的重启。如果你不想重新编译内核，推荐你在虚拟机上用测试发行版来跑相关的示例。万一不小心操作失误了，重启或者恢复虚拟机都很方便。
+
+很多时候你可能会想把模块加载到已经编译好的内核里，比如说适配市面常见Linux发行版，或者你要适配你之前编译过的内核。还有些特殊场景，比如你可能想现场编译并把模块插入到正在运行的内核，这个时候你可能没法重新编译内核或者不方便重启机器。如果你觉得你遇不到一定要在预编译好的内核上加载模块的场景，你可以跳过本小节，把本章剩余部分当做一个大脚注。
+
+如果你直接安装内核源码树，用它来编译你的内核模块，然后试着把这个模块插入你现在的内核，你很可能会得到以下错误：
+
+```
+insmod: ERROR: could not insert module poet.ko: Invalid module format
+```
+
+比较易懂的信息在systemd日志里有记录：
+
+```
+kernel: poet: disagrees about version of symbol module_layout
+```
+
+也就是说，你的内核拒绝接受你的模块，因为版本字符串（确切来说是*版本魔数*，参见[include/linux/vermagic.h](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/include/linux/vermagic.h)）不匹配。版本魔数以静态字符串的形式存在模块的目标文件中，开头是`vermagic:`。版本信息在链接到`kernel/module.o`文件时写入你的模块中。要查看一个模块的版本魔数等其他字符串信息，使用`modinfo module.ko`命令：
+
+```
+$ modinfo hello-4.ko
+description:    A sample driver
+author:         LKMPG
+license:        GPL
+srcversion:     B2AA7FBFCC2C39AED665382
+depends:
+retpoline:      Y
+name:           hello_4
+vermagic:       5.4.0-70-generic SMP mod_unload modversions
+```
+
+为了解决上述问题，我们可以使用`--force-vermagic`选项，但这个做法有潜在风险，在生产环境中，毫无疑问不可接受。于是，我们最好还是要在与预编译好的内核一致的环境中编译我们的内科模块。本章剩余部分就会说到具体做法。
+
+首先，确保你已经有了与你当前内核版本完全一致的内核源码树。然后，找到你当前预编译好的内核对应的编译配置。一般来说，你可以在你的`/boot`目录下找到它，名字类似`config-5.14.x`。你只需要把它复制到你的内核源码树中：```cp /boot/config-`uname -r` .config```。
+
+再回头看看之前的报错：进一步检查版本魔数发现，即使使用完全相同的两份配置文件，版本魔数中还是可能会产生微小的差异，导致你无法向内核中插入模块。这个微小的差异叫做自定义字符串，出现在模块的版本魔数而不是内核的版本魔数中。
