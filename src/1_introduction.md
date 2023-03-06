@@ -1,7 +1,30 @@
 # 引言
 
+Linux内核模块编程指南是一本自由的书籍；你可以在[开放软件协议](https://opensource.org/licenses/OSL-3.0)3.0的许可下复制或改动这本书。
+
+本书的在不提供任何保障的情况下，希望能够帮助大家，本书甚至不刻意声明在销售、健康等方面能提供任何保障。
+
+在上述版权说明完整、且方式遵循[开放软件协议](https://opensource.org/licenses/OSL-3.0)的前提下，作者鼓励这本书以个人使用或商用的模式广泛传播。简单来说，你可以免费或收费复制和分发这本书，在实体或电子书等任何媒介复制这本书都不需要作者的额外授权。
+
+由本书衍生的工作以及对本书的翻译必须遵循开放软件协议，且原始的版权声明必须保持完整。如果你对本书贡献了新的素材，你必须有能力订正你的素材和源码。请直接向文档维护者Jim Huang <jserv@ccns.ncku.edu.tw>提交维护和更新，以容许对更新内容进行合并梳理，并向Linux社区提供长久的校订。
+
+如果你以商业的形式出版或分发了该书，作者和[Linux文档项目（LDP）](https://tldp.org/)将高度赞扬你的版费或印本等捐赠。这种方式的建设体现了你对自由软件和LDP的支持。如果你有相关疑问或建议，请联系上述地址。
+
+## 1.1 作者
+
+Linux内核模块编程指南最初是由Ori Pomerantz为内核版本2.2编写的。后来，Ori没空维护本书了，毕竟Linux内核发展得很快。Peter Jay Salzman接过了维护工作，并将本书更新到适配内核版本2.4。后来，到了内核版本2.6，Peter也没空跟上最新的开发进度了，于是Michael Burian成为了共同维护者，将本书更新到内核版本2.6。Bob Mottram将例子更新到了内核版本3.8+。Jim Huang将本书更新到了适配最近的内核版本（v5.x）并修订了LaTeX文档。
+
+## 1.2 鸣谢
+
+以下人士贡献了对本书的修正和不错的建议。
+
+2011eric, 25077667, Arush Sharma, asas1asas200, Benno Bielmeier, Bob Lee, Brad Baker, ccs100203, Chih-Yu Chen, Ching-Hua (Vivian) Lin, ChinYikMing, Cyril Brulebois, Daniele Paolo Scarpazza, David Porter, demonsome, Dimo Velev, Ekang Monyet, fennecJ, Francois Audeon, gagachang, Gilad Reti, Horst Schirmeier, Hsin-Hsiang Peng, Ignacio Martin, JianXing Wu, linD026, lyctw, manbing, Marconi Jiang, mengxinayan, RinHizakura, Roman Lakeev, Stacy Prowell, Steven Lung, Tristan Lelong, Tucker Polomik, VxTeemo, Wei-Lun Tsai, xatier, Ylowy.
+
 ## 1.3 内核模块是什么
 
+假设你现在想写一个内核模块。你懂C,你已经写了好些作为进程跑得起来的普通程序，而现在你想要触摸到真实运行着的部分，在这里，一个野指针就可以干掉你的文件系统、一个吐核就能导致重启。
+
+内核模块到底是什么？模块是可以根据需要在内核中安装或卸载的代码段。它们在不需要重启的情况下扩展内核的功能。比如，有一类模块是设备驱动，允许内核访问连接到系统的硬件设备。没有内核模块的话，我们就不得不反复构建宏内核，把新的功能直接塞到内核镜像中。带来的缺点除了导致内核体积膨胀外，还有就是每次要添加点新功能，我们都不得不重新构建内核并重启。
 
 ## 1.4 内核模块软件包
 

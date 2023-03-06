@@ -30,7 +30,7 @@ mdbook serve
 
 ## 翻译进度
 
-- [ ] 1 Introduction
+- [x] 1 Introduction
 - [x] 2 Headers
 - [x] 3 Examples
 - [ ] 4 Hello World
