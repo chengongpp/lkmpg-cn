@@ -525,4 +525,40 @@ vermagic:       5.4.0-70-generic SMP mod_unload modversions
 
 首先，确保你已经有了与你当前内核版本完全一致的内核源码树。然后，找到你当前预编译好的内核对应的编译配置。一般来说，你可以在你的`/boot`目录下找到它，名字类似`config-5.14.x`。你只需要把它复制到你的内核源码树中：```cp /boot/config-`uname -r` .config```。
 
-再回头看看之前的报错：进一步检查版本魔数发现，即使使用完全相同的两份配置文件，版本魔数中还是可能会产生微小的差异，导致你无法向内核中插入模块。这个微小的差异叫做自定义字符串，出现在模块的版本魔数而不是内核的版本魔数中。
+再回头看看之前的报错：进一步检查版本魔数发现，即使使用完全相同的两份配置文件，版本魔数中还是可能会产生微小的差异，导致你无法向内核中插入模块。这个微小的差异叫做自定义字符串，出现在模块的版本魔数而不是内核的版本魔数中；产生的原因是，一些发行版包含的makefile在原始文件上进行了修改。现在，检查一下你的`Makefile`，确认特定的版本信息与你当前的内核版本完全吻合。比如你的makefile可以以以下文本打头：
+
+```makefile
+VERSION = 5
+PATCHLEVEL = 14
+SUBLEVEL = 0
+EXTRAVERSION = -rc2
+```
+
+这种情况下，你需要把**EXTRAVERSION**的值设为`-rc2`。我们推荐你备份一份你用来编译内核用的makefile，它一般放在`/lib/modules/5.14.0-rc2/build`。下面这行简短的命令应该好使。
+
+```bash
+cp /lib/modules/`uname -r`/build/Makefile linux-`uname -r`
+```
+
+这里的```linux-`uname -r` ```就是你试图编译的内核源码版本。
+
+现在，执行`make`更新相关的配置、版本头文件和目标文件：
+
+```plaintext
+$ make
+  SYNC    include/config/auto.conf.cmd
+  HOSTCC  scripts/basic/fixdep
+  HOSTCC  scripts/kconfig/conf.o
+  HOSTCC  scripts/kconfig/confdata.o
+  HOSTCC  scripts/kconfig/expr.o
+  LEX     scripts/kconfig/lexer.lex.c
+  YACC    scripts/kconfig/parser.tab.[ch]
+  HOSTCC  scripts/kconfig/preprocess.o
+  HOSTCC  scripts/kconfig/symbol.o
+  HOSTCC  scripts/kconfig/util.o
+  HOSTCC  scripts/kconfig/lexer.lex.o
+  HOSTCC  scripts/kconfig/parser.tab.o
+  HOSTLD  scripts/kconfig/conf
+```
+
+如果你不想真的编译内核，你可以在*分隔线一行*后打断构建过程（Ctrl+C），因为此时你所需要的文件已经准备好了。现在你可以回到你模块的目录，编译你的模块：它会根据你当前的内核设置构建起来，并且能正确无误地加载到你的内核中。

@@ -33,8 +33,8 @@ mdbook serve
 - [x] 1 Introduction
 - [x] 2 Headers
 - [x] 3 Examples
-- [ ] 4 Hello World
-- [ ] 5 Preliminaries
+- [x] 4 Hello World
+- [x] 5 Preliminaries
 - [ ] 6 Character Device drivers
 - [ ] 7 The /proc File System
 - [ ] 8 sysfs: Interacting with your module
