@@ -4,3 +4,6 @@ language = "zh-cn"
 multilingual = false
 src = "src"
 title = "Linux内核模块编程指南（2022）"
+
+[output.html]
+mathjax-support = true
