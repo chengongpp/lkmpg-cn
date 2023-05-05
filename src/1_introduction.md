@@ -77,7 +77,7 @@ sudo lsmod | grep fat
     ```shell
     insmod ./hello-1.ko
     ```
-    
+
     之后你用`dmesg`命令深入探究，会看到`Lockdown: insmod: unsigned module loading is restricted; see man kernel lockdown.7`
 
     如果你看到了这条信息，最简单的方法就是在BIOS里关闭安全启动，然后再试试加载模块。你也可以通过一通复杂的操作生成密钥，然后把密钥安装到你的系统上，再然后用密钥签名模块，最后再加载模块跑起来。然而这个操作对新手来说不太适合。如果你感兴趣的话可以参考[安全启动](https://wiki.debian.org/SecureBoot)中的步骤。

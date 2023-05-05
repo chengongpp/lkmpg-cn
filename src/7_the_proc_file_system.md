@@ -95,7 +95,7 @@ MODULE_LICENSE("GPL");
 
 在Linux内核版本5.6+中`proc_ops`结构体在[include/linux/proc_fs.h](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/include/linux/proc_fs.h)中定义。在较老的内核版本中，这个结构体还用到`file_operations`来处理在`/proc`文件系统里的自定义钩子，但`file_operations`当中有些成员对VFS来说用不到，每次VFS展开`file_operations`集合时，`/proc`的代码段就变得特别臃肿。除了空间优化以外，这个结构还精简了一些操作流程来提高性能。比如`/proc`当中永远存在的文件可以将`proc_flag`设为`PROC_ENTRY_PERMANENT`，这样一来，在每个打开/读取/关闭流程中都可以省下2次原子操作、1次分配和1次释放。
 
-7.2 对/proc文件的读写
+## 7.2 对/proc文件的读写
 
 刚才我们已经看了一个非常简单的`/proc`文件例子，例子中，我们仅对`/proc/helloworld`进行了读取。其实`/proc`文件也支持写入，工作方式和读取操一样，在`/proc`文件被写入时会调用一个函数。不过和读取操作不同的一点是，数据是从用户那写过来的，你必须把数据从用户空间导入到内核空间（用`copy_from_user`或者`get_user`实现）。
 
@@ -203,3 +203,128 @@ module_exit(procfs2_exit);
  
 MODULE_LICENSE("GPL");
 ```
+
+## 7.3 使用标准文件系统管理/proc文件
+
+上文中，我们学会了如何通过`/proc`接口来对`/proc`文件进行读写。此外，我们也可以通过inode来管理`/proc`。我们主要需要注意高级函数的使用，比如权限相关的操作。
+
+在Linux中，文件系统注册有一套标准的机制。因为每个文件系统都必须得有自己的用来处理inode和文件操作的函数，内核中有一个特殊的结构`struct inode_operations`来保存指向这些函数的指针，这个结构也包括一个指向`struct proc_ops`的指针。
+
+文件操作和inode操作的区别在于，文件操作处理文件本身，而inode操作处理对该文件的引用，比如创建一个到文件的链接。
+
+在`/proc`中，每当我们注册一个新文件的时候，我们都可以指定使用具体的某个`struct inode_operations`来访问该文件；这就是我们用到的机制，一个`struct inode_operations`包含一个指针指向`struct proc_ops`，而后者又包括指向`procfs_read`和`procfs_write`函数的指针。
+
+还有一个有趣之处在于`module_permission`函数。当一个进程试图对`/proc`文件进行操作时，该函数就会被调用，并决定是否允许该进程访问。现在这个函数只是基于目前用户的UID和操作来做判断（目前而言，是一个指针，指向了包含当前运行进程信息的结构），不过它也可以按我们想要的方式来做判断，比如说别的进程在对相同文件做的操作，日期时间，或者我们最后收到的输入。
+
+需要注意，标准的读和写的角色在内核中已经预留好了，读函数用于输出，写函数用于输入。这样做的原因在于，读和写操作都是从用户的视角来看的，如果进程需要从内核中读取数据，内核就需要把数据输出来，而如果进程需要把数据写入内核，内核就需要接受数据输入。
+
+```c
+/* 
+ * procfs3.c 
+ */ 
+ 
+#include <linux/kernel.h> 
+#include <linux/module.h> 
+#include <linux/proc_fs.h> 
+#include <linux/sched.h> 
+#include <linux/uaccess.h> 
+#include <linux/version.h> 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) 
+#include <linux/minmax.h> 
+#endif 
+ 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0) 
+#define HAVE_PROC_OPS 
+#endif 
+ 
+#define PROCFS_MAX_SIZE 2048UL 
+#define PROCFS_ENTRY_FILENAME "buffer2k" 
+ 
+static struct proc_dir_entry *our_proc_file; 
+static char procfs_buffer[PROCFS_MAX_SIZE]; 
+static unsigned long procfs_buffer_size = 0; 
+ 
+static ssize_t procfs_read(struct file *filp, char __user *buffer, 
+                           size_t length, loff_t *offset) 
+{ 
+    if (*offset || procfs_buffer_size == 0) { 
+        pr_debug("procfs_read: END\n"); 
+        *offset = 0; 
+        return 0; 
+    } 
+    procfs_buffer_size = min(procfs_buffer_size, length); 
+    if (copy_to_user(buffer, procfs_buffer, procfs_buffer_size)) 
+        return -EFAULT; 
+    *offset += procfs_buffer_size; 
+ 
+    pr_debug("procfs_read: read %lu bytes\n", procfs_buffer_size); 
+    return procfs_buffer_size; 
+} 
+static ssize_t procfs_write(struct file *file, const char __user *buffer, 
+                            size_t len, loff_t *off) 
+{ 
+    procfs_buffer_size = min(PROCFS_MAX_SIZE, len); 
+    if (copy_from_user(procfs_buffer, buffer, procfs_buffer_size)) 
+        return -EFAULT; 
+    *off += procfs_buffer_size; 
+ 
+    pr_debug("procfs_write: write %lu bytes\n", procfs_buffer_size); 
+    return procfs_buffer_size; 
+} 
+static int procfs_open(struct inode *inode, struct file *file) 
+{ 
+    try_module_get(THIS_MODULE); 
+    return 0; 
+} 
+static int procfs_close(struct inode *inode, struct file *file) 
+{ 
+    module_put(THIS_MODULE); 
+    return 0; 
+} 
+ 
+#ifdef HAVE_PROC_OPS 
+static struct proc_ops file_ops_4_our_proc_file = { 
+    .proc_read = procfs_read, 
+    .proc_write = procfs_write, 
+    .proc_open = procfs_open, 
+    .proc_release = procfs_close, 
+}; 
+#else 
+static const struct file_operations file_ops_4_our_proc_file = { 
+    .read = procfs_read, 
+    .write = procfs_write, 
+    .open = procfs_open, 
+    .release = procfs_close, 
+}; 
+#endif 
+ 
+static int __init procfs3_init(void) 
+{ 
+    our_proc_file = proc_create(PROCFS_ENTRY_FILENAME, 0644, NULL, 
+                                &file_ops_4_our_proc_file); 
+    if (our_proc_file == NULL) { 
+        remove_proc_entry(PROCFS_ENTRY_FILENAME, NULL); 
+        pr_debug("Error: Could not initialize /proc/%s\n", 
+                 PROCFS_ENTRY_FILENAME); 
+        return -ENOMEM; 
+    } 
+    proc_set_size(our_proc_file, 80); 
+    proc_set_user(our_proc_file, GLOBAL_ROOT_UID, GLOBAL_ROOT_GID); 
+ 
+    pr_debug("/proc/%s created\n", PROCFS_ENTRY_FILENAME); 
+    return 0; 
+} 
+ 
+static void __exit procfs3_exit(void) 
+{ 
+    remove_proc_entry(PROCFS_ENTRY_FILENAME, NULL); 
+    pr_debug("/proc/%s removed\n", PROCFS_ENTRY_FILENAME); 
+} 
+ 
+module_init(procfs3_init); 
+module_exit(procfs3_exit); 
+ 
+MODULE_LICENSE("GPL");
+```
+
+还想看更多的关于procfs的例子吗？首先提醒一下你，有些流言说procfs已经过时了，要用`sysfs`替代。如果你自己想要学习内核相关的知识，还是可以考虑用这个机制的。
