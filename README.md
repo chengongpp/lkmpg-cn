@@ -8,9 +8,10 @@
 
 ## 使用方式
 
-本书使用[mdBook](https://github.com/rust-lang/mdBook)作为构建系统，可以使用以下命令进行构建：
+本书使用[mdBook](https://github.com/rust-lang/mdBook)与[mdbook-graphviz](https://github.com/dylanowen/mdbook-graphviz)作为构建系统，可以使用以下命令进行构建（最低支持的版本为`v0.4.28`）：
 
 ```bash
+cargo install mdbook-graphviz # 安装mdbook-graphviz插件
 mdbook build
 ```
 
@@ -35,7 +36,7 @@ mdbook serve
 - [x] 3 Examples
 - [x] 4 Hello World
 - [x] 5 Preliminaries
-- [ ] 6 Character Device drivers
+- [x] 6 Character Device drivers
 - [ ] 7 The /proc File System
 - [ ] 8 sysfs: Interacting with your module
 - [ ] 9 Talking To Device Files

@@ -328,3 +328,144 @@ MODULE_LICENSE("GPL");
 ```
 
 还想看更多的关于procfs的例子吗？首先提醒一下你，有些流言说procfs已经过时了，要用`sysfs`替代。如果你自己想要学习内核相关的知识，还是可以考虑用这个机制的。
+
+## 7.4 使用seq_file管理/proc文件
+
+在前面的章节中，我们能感受到，创建一个`/proc`文件的流程可能相当“复杂”。为了帮助人们创建`/proc`文件，Linux提供了一个名叫`seq_file`的API，用于帮助规范`/proc`文件以便输出。这个API囊括了由`start()`、`next()`和`stop()`三个函数组成的序列操作。每当用户读取`/proc`文件时，`seq_file`就会调这一序列操作。
+
+序列在最开头调用`start()`函数。如果返回值不为`NULL`，则接下来`next()`函数就会被调用。这函数是个迭代器，用来遍历一遍所有的数据。每次`next()`函数被调用时，`show()`函数也会被调用。
+
+**注意：**一个序列操作完成后，马上又会调另一个序列操作，也就是说，`stop()`函数在末尾会再次调用`start()`函数。直到`start()`函数返回`NULL`，循环才会停止。具体机制参考下图。
+
+
+TODO: seq_file的图
+
+`seq_file`提供了操作`proc_ops`的基础函数，如`seq_read`、`seq_lseek`等，但不提供对`/proc`文件的写入操作。当然，你仍然可以像上一个例子一样操作
+
+```c
+/* 
+ * procfs4.c -  在/proc中创建一个“文件”
+ * 这个程序使用 seq_file 管理 /proc 文件 
+ */ 
+ 
+#include <linux/kernel.h> /* 处理内核相关的工作 */ 
+#include <linux/module.h> /* 具体来说就是写内核模块 */ 
+#include <linux/proc_fs.h> /* 操作 proc fs 要用到 */ 
+#include <linux/seq_file.h> /* seq_file 要用到 */ 
+#include <linux/version.h> 
+ 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0) 
+#define HAVE_PROC_OPS 
+#endif 
+ 
+#define PROC_NAME "iter" 
+ 
+/* 这个函数在每次序列操作开始时被调用
+ * 比如说：
+ *   - 第一次阅读 /proc 文件的时候 
+ *   - 函数终止的时候(序列结尾) 
+ */ 
+static void *my_seq_start(struct seq_file *s, loff_t *pos) 
+{ 
+    static unsigned long counter = 0; 
+ 
+    /* 是新的序列吗？ */ 
+    if (*pos == 0) { 
+        /* 是 => 返回非空值，序列操作开始 */ 
+        return &counter; 
+    } 
+ 
+    /* 不是 => 序列结束，返回空停止操作 */ 
+    *pos = 0; 
+    return NULL; 
+} 
+ 
+/* 这个函数在每次序列操作开始后被调用
+ * 一直调用直到返回NULL为止 (从而停止序列读取操作). 
+ */ 
+static void *my_seq_next(struct seq_file *s, void *v, loff_t *pos) 
+{ 
+    unsigned long *tmp_v = (unsigned long *)v; 
+    (*tmp_v)++; 
+    (*pos)++; 
+    return NULL; 
+} 
+ 
+/* 在序列结束时被调用 */ 
+static void my_seq_stop(struct seq_file *s, void *v) 
+{ 
+    /* 我们在start()中使用了静态值，这儿什么都不需要做 */ 
+} 
+ 
+/* This function is called for each "step" of a sequence. */ 
+static int my_seq_show(struct seq_file *s, void *v) 
+{ 
+    loff_t *spos = (loff_t *)v; 
+ 
+    seq_printf(s, "%Ld\n", *spos); 
+    return 0; 
+} 
+ 
+/* This structure gather "function" to manage the sequence */ 
+static struct seq_operations my_seq_ops = { 
+    .start = my_seq_start, 
+    .next = my_seq_next, 
+    .stop = my_seq_stop, 
+    .show = my_seq_show, 
+}; 
+ 
+/* This function is called when the /proc file is open. */ 
+static int my_open(struct inode *inode, struct file *file) 
+{ 
+    return seq_open(file, &my_seq_ops); 
+}; 
+ 
+/* This structure gather "function" that manage the /proc file */ 
+#ifdef HAVE_PROC_OPS 
+static const struct proc_ops my_file_ops = { 
+    .proc_open = my_open, 
+    .proc_read = seq_read, 
+    .proc_lseek = seq_lseek, 
+    .proc_release = seq_release, 
+}; 
+#else 
+static const struct file_operations my_file_ops = { 
+    .open = my_open, 
+    .read = seq_read, 
+    .llseek = seq_lseek, 
+    .release = seq_release, 
+}; 
+#endif 
+ 
+static int __init procfs4_init(void) 
+{ 
+    struct proc_dir_entry *entry; 
+ 
+    entry = proc_create(PROC_NAME, 0, NULL, &my_file_ops); 
+    if (entry == NULL) { 
+        remove_proc_entry(PROC_NAME, NULL); 
+        pr_debug("Error: Could not initialize /proc/%s\n", PROC_NAME); 
+        return -ENOMEM; 
+    } 
+ 
+    return 0; 
+} 
+ 
+static void __exit procfs4_exit(void) 
+{ 
+    remove_proc_entry(PROC_NAME, NULL); 
+    pr_debug("/proc/%s removed\n", PROC_NAME); 
+} 
+ 
+module_init(procfs4_init); 
+module_exit(procfs4_exit); 
+ 
+MODULE_LICENSE("GPL");
+```
+
+如果你想了解更多信息，可以参考以下网页：
+
+- <https://lwn.net/Articles/22355/>
+- <https://kernelnewbies.org/Documents/SeqFileHowTo>
+
+你也可以直接阅读Linux内核中的[`fs/seq_file.c`](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/fs/seq_file.c)。

@@ -7,3 +7,7 @@ title = "Linux内核模块编程指南（2022）"
 
 [output.html]
 mathjax-support = true
+
+[preprocessor.graphviz]
+command = "mdbook-graphviz"
+output-to-file = false
